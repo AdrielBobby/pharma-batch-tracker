@@ -1,4 +1,7 @@
 *.log
 .env
+<<<<<<< HEAD
 node_modules/
 dist/
+=======
+>>>>>>> origin/main

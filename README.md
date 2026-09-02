@@ -16,12 +16,15 @@ sql/
   03_views.sql           Reporting views (expiring soon, out of stock, etc.)
   04_sample_data.sql     Seed data for demoing the schema
   05_queries.sql         Example analytical queries / report queries
+<<<<<<< HEAD
 frontend/
   src/                   Responsive React + TypeScript stock-desk interface
   .env.example           API connection settings
 docs/
   demo-flow.md           Final examiner demonstration sequence
   test-cases.md          Frontend and integration test plan
+=======
+>>>>>>> origin/main
 ```
 
 ## Core entities
@@ -42,6 +45,7 @@ docs/
 
 Target RDBMS: MySQL 8+ (adjust syntax for PostgreSQL/Oracle if needed —
 noted inline where syntax diverges).
+<<<<<<< HEAD
 
 ## Frontend
 
@@ -53,3 +57,5 @@ npm run dev
 
 The current frontend runs with a schema-aligned demo dataset until the backend REST API
 contract is finalized. See `frontend/README.md` for integration notes.
+=======
+>>>>>>> origin/main
