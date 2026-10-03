@@ -1,18 +1,48 @@
-# Member 4 Integration Test Cases
+# Test Cases
 
-| ID | Scenario | Expected result |
+| # | Test | Expected result |
 |---|---|---|
-| TC-01 | Open overview after API startup | Stock summary, expiry horizon and action queue load without errors |
-| TC-02 | Create a medicine with valid fields | Medicine appears in the catalog |
-| TC-03 | Create a duplicate medicine/manufacturer pair | API returns a clear validation/conflict error |
-| TC-04 | Receive a valid batch | Batch and available quantity are created |
-| TC-05 | Set expiry before manufacture date | Request is rejected |
-| TC-06 | Sell medicine with two eligible batches | Earliest-expiring batch is allocated first |
-| TC-07 | Sale quantity exceeds total stock | Sale is rejected and no stock changes |
-| TC-08 | Attempt sale from an expired batch | Expired batch is not allocated |
-| TC-09 | Run 30-day expiry scan twice | No duplicate same-day alerts are created |
-| TC-10 | Resolve an expiry alert | Alert becomes resolved and leaves active list |
-| TC-11 | Search tables on mobile viewport | Matching rows remain readable and scroll safely |
-| TC-12 | Stop database while UI is open | UI shows an actionable connection error |
+| 1 | Add supplier | Row inserted into `SUPPLIER` |
+| 2 | Edit supplier | Master data changes without affecting purchase history |
+| 3 | Delete unused supplier | Row is deleted |
+| 4 | Delete supplier referenced by purchase | Rejected by foreign-key protection |
+| 5 | Add medicine | Row inserted into `MEDICINE` |
+| 6 | Edit medicine | Catalogue data changes; batch history remains linked |
+| 7 | Delete unused medicine | Row is deleted |
+| 8 | Delete medicine with batches | Rejected by foreign-key protection |
+| 9 | Record purchase with new batch | `PURCHASE`, `PURCHASE_ITEM`, `MEDICINE_BATCH` inserted; stock increases |
+| 10 | Record purchase for existing batch | Existing batch stock increases |
+| 11 | Invalid purchase subtotal by direct SQL | Check constraint rejects the line |
+| 12 | Update purchase line quantity | Batch stock changes by exactly the quantity delta |
+| 13 | Delete an unconsumed purchase line | Received quantity is removed from stock |
+| 14 | Delete/reduce purchase below already-consumed stock | Trigger rejects operation |
+| 15 | Sell medicine with enough stock | Earliest eligible batch is selected and stock deducted |
+| 16 | Sell quantity spanning two batches | Earlier batch is depleted before later batch allocation |
+| 17 | Sell greater than total eligible stock | API rejects sale and rolls back the entire transaction |
+| 18 | Direct sale from expired batch | Trigger raises `Expired batch cannot be sold` |
+| 19 | Update/delete sale line by direct SQL | Stock is correctly reconciled/restored |
+| 20 | Header totals after item insert/update/delete | `PURCHASE.TOTAL_AMOUNT`/`SALE.TOTAL_AMOUNT` remain equal to detail totals |
+| 21 | Generate expiry alerts twice | No duplicate active alert for the same batch/type |
+| 22 | Resolve active alert | Status becomes `RESOLVED` |
+| 23 | Near-expiry view | Shows positive-stock batches expiring in 0–30 days |
+| 24 | Low-stock view | Shows medicine totals below reorder level |
+| 25 | Concurrent sale candidate selection | `FOR UPDATE` locks eligible batches until transaction completes |
+| 26 | FEFO unit tests | All three Node tests pass |
+| 27 | Frontend production build | `npm run build` completes with zero TypeScript/Vite errors |
 
-API mutation tests are pending Member 2's finalized endpoint contract.
+## Automated backend unit test
+
+```bash
+cd backend
+npm test
+```
+
+## Database reconciliation checks
+
+After installing the database, run:
+
+```sql
+@database/07_validation.sql
+```
+
+The header/detail mismatch queries and negative-stock query must return no rows.

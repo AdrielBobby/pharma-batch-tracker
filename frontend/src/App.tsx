@@ -1,284 +1,280 @@
-import { isValidElement, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
-  AlertTriangle,
-  ArrowRight,
-  Check,
-  ChevronDown,
-  Download,
-  Filter,
-  Menu,
-  PackagePlus,
-  Plus,
-  Search,
-  ShieldCheck,
-  X,
+  AlertTriangle, ArrowRight, Boxes, Check, ChevronRight, ClipboardList, Clock3,
+  FileBarChart, LayoutDashboard, Menu, PackagePlus, Pencil, Pill, Plus, RefreshCw,
+  Search, ShoppingBag, Store, Trash2, Truck, X
 } from 'lucide-react';
-import { batches, daysLeft, medicines, sales, suppliers } from './data';
+import { api, daysLeft } from './data';
 
-type Page = 'Overview' | 'Medicines' | 'Batches' | 'Suppliers' | 'Purchases' | 'Sales' | 'Expiry' | 'Reports';
-type ActionMode = 'Receive stock' | 'New sale' | 'Add medicine' | 'Add supplier' | 'New purchase';
-type Cell = string | number | ReactNode;
-
-const navigation: Page[] = ['Overview', 'Medicines', 'Batches', 'Suppliers', 'Purchases', 'Sales', 'Expiry', 'Reports'];
-
-function formatDate(date: string) {
-  return new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(date));
-}
-
-function today(format: Intl.DateTimeFormatOptions) {
-  return new Intl.DateTimeFormat('en-IN', format).format(new Date());
-}
-
-function nodeText(value: ReactNode): string {
-  if (typeof value === 'string' || typeof value === 'number') return String(value);
-  if (Array.isArray(value)) return value.map(nodeText).join(' ');
-  if (isValidElement<{ children?: ReactNode }>(value)) return nodeText(value.props.children);
-  return '';
-}
-
-function BatchState({ expiry }: { expiry: string }) {
-  const days = daysLeft(expiry);
-  const label = days < 0 ? 'Expired' : days <= 30 ? 'Due soon' : 'Clear';
-  return <span className={`batch-state ${days < 0 ? 'expired' : days <= 30 ? 'due' : 'clear'}`}><i />{label}</span>;
-}
-
-function PageIntro({ label, title, description, action, onAction }: { label: string; title: string; description: string; action?: string; onAction?: () => void }) {
-  return <div className="page-intro">
-    <div><span className="section-label">{label}</span><h1>{title}</h1><p>{description}</p></div>
-    {action && <button className="solid-action" onClick={onAction}><Plus size={16} />{action}</button>}
-  </div>;
-}
-
-function BatchHorizon({ go }: { go: (page: Page) => void }) {
-  const buckets = [
-    { label: 'Past due', note: 'Remove from sale', tone: 'danger', rows: batches.filter(batch => daysLeft(batch.expiry) < 0) },
-    { label: 'Next 30 days', note: 'Prioritise by FEFO', tone: 'warning', rows: batches.filter(batch => daysLeft(batch.expiry) >= 0 && daysLeft(batch.expiry) <= 30) },
-    { label: '31-90 days', note: 'Watch closely', tone: 'watch', rows: batches.filter(batch => daysLeft(batch.expiry) > 30 && daysLeft(batch.expiry) <= 90) },
-    { label: 'Beyond 90 days', note: 'No immediate risk', tone: 'clear', rows: batches.filter(batch => daysLeft(batch.expiry) > 90) },
-  ];
-
-  return <section className="horizon-block">
-    <div className="block-heading">
-      <div><span>Batch horizon</span><h2>Expiry position</h2></div>
-      <button onClick={() => go('Expiry')}>Open expiry register <ArrowRight size={15} /></button>
-    </div>
-    <div className="horizon-grid">
-      {buckets.map(bucket => <div className={`horizon-column ${bucket.tone}`} key={bucket.label}>
-        <div className="horizon-head"><strong>{bucket.rows.length}</strong><div><b>{bucket.label}</b><small>{bucket.note}</small></div></div>
-        <div className="horizon-rows">
-          {bucket.rows.length === 0 && <div className="empty-horizon"><Check size={15} /><span>No batches</span></div>}
-          {bucket.rows.slice(0, 3).map(batch => <button key={batch.id} onClick={() => go('Batches')}>
-            <span><b>{batch.batch}</b><small>{batch.medicine}</small></span>
-            <span><b>{batch.available}</b><small>units</small></span>
-          </button>)}
-        </div>
-      </div>)}
-    </div>
-  </section>;
-}
-
-function Dashboard({ go, openAction }: { go: (page: Page) => void; openAction: (mode: ActionMode) => void }) {
-  const atRisk = batches.filter(batch => daysLeft(batch.expiry) <= 30);
-  const totalUnits = batches.reduce((sum, batch) => sum + batch.available, 0);
-  const stockValue = batches.reduce((sum, batch) => sum + batch.available * batch.price, 0);
-
-  return <>
-    <PageIntro
-      label="Daily stock desk"
-      title="MG Road inventory"
-      description={`${today({ weekday: 'long', day: '2-digit', month: 'long' })} / Last reconciliation at 09:15`}
-      action="Receive delivery"
-      onAction={() => openAction('Receive stock')}
-    />
-
-    <section className="ledger-summary">
-      <div><span>On hand</span><strong>{totalUnits.toLocaleString('en-IN')}</strong><small>units</small></div>
-      <div><span>Stock value</span><strong>Rs {stockValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</strong><small>at cost</small></div>
-      <div><span>Active batches</span><strong>{batches.length}</strong><small>across {medicines.length} medicines</small></div>
-      <button onClick={() => go('Expiry')}><span>Exceptions</span><strong>{atRisk.length}</strong><small>{atRisk.filter(batch => daysLeft(batch.expiry) < 0).length} cannot be sold</small><ArrowRight size={18} /></button>
-    </section>
-
-    <div className="operations-layout">
-      <BatchHorizon go={go} />
-      <aside className="work-queue">
-        <div className="queue-heading"><span>Today</span><strong>Action queue</strong><small>3 items require review</small></div>
-        <div className="queue-list">
-          <button onClick={() => go('Expiry')}><em>01</em><span><b>Quarantine AMX-2023-B1</b><small>40 units expired 15 days ago</small></span><i className="critical" /></button>
-          <button onClick={() => go('Expiry')}><em>02</em><span><b>Prioritise PCM-2024-A2</b><small>90 units expire in 10 days</small></span><i className="priority" /></button>
-          <button onClick={() => go('Purchases')}><em>03</em><span><b>Review insulin reorder</b><small>60 vials remain in stock</small></span><i /></button>
-        </div>
-        <button className="queue-action" onClick={() => openAction('New sale')}>Start a sale <ArrowRight size={16} /></button>
-      </aside>
-    </div>
-
-    <section className="inventory-ledger">
-      <div className="block-heading ledger-heading">
-        <div><span>Stock ledger</span><h2>Inventory by medicine</h2></div>
-        <div className="heading-actions"><button><Download size={15} /> Export</button><button onClick={() => go('Medicines')}>Full catalog <ArrowRight size={15} /></button></div>
-      </div>
-      <div className="table-scroll">
-        <table>
-          <thead><tr><th>Medicine</th><th>Manufacturer</th><th>Batches</th><th>Next expiry</th><th className="numeric">On hand</th><th>Position</th></tr></thead>
-          <tbody>{medicines.map(medicine => {
-            const stockBatches = batches.filter(batch => batch.medicine === medicine.name);
-            const nextBatch = [...stockBatches].sort((a, b) => a.expiry.localeCompare(b.expiry))[0];
-            return <tr key={medicine.id}>
-              <td><span className="medicine-id">M{String(medicine.id).padStart(3, '0')}</span><b>{medicine.name}</b><small>{medicine.category} / {medicine.unit}</small></td>
-              <td>{medicine.manufacturer}</td><td>{stockBatches.length}</td>
-              <td>{nextBatch ? <><b>{formatDate(nextBatch.expiry)}</b><small>{nextBatch.batch}</small></> : '-'}</td>
-              <td className="numeric"><b>{medicine.stock}</b></td>
-              <td>{nextBatch ? <BatchState expiry={nextBatch.expiry} /> : '-'}</td>
-            </tr>;
-          })}</tbody>
-        </table>
-      </div>
-      <div className="ledger-foot"><span>Showing all {medicines.length} medicines</span><span><i /> Live stock position</span></div>
-    </section>
-
-    <section className="transaction-strip">
-      <div><span>Latest transaction</span><strong>{sales[0].id} / {sales[0].medicine}</strong><small>{sales[0].qty} units allocated from {sales[0].batch} using FEFO</small></div>
-      <div><span>Customer</span><strong>{sales[0].customer}</strong><small>{sales[0].date}</small></div>
-      <div><span>Sale value</span><strong>Rs {sales[0].total.toFixed(2)}</strong><small>Completed</small></div>
-      <button onClick={() => go('Sales')}>View transaction ledger <ArrowRight size={16} /></button>
-    </section>
-  </>;
-}
-
-const listingContent: Record<Exclude<Page, 'Overview'>, { label: string; description: string; action?: ActionMode; headers: string[]; rows: Cell[][] }> = {
-  Medicines: {
-    label: 'Master data', description: 'Product identity, pack format, manufacturer and current stock.', action: 'Add medicine',
-    headers: ['Code', 'Medicine', 'Category', 'Manufacturer', 'Pack', 'On hand'],
-    rows: medicines.map(medicine => [`M${String(medicine.id).padStart(3, '0')}`, <><b>{medicine.name}</b><small>Active product</small></>, medicine.category, medicine.manufacturer, medicine.unit, <b>{medicine.stock}</b>]),
-  },
-  Batches: {
-    label: 'Traceability', description: 'Every received batch, its source, remaining quantity and expiry.', action: 'Receive stock',
-    headers: ['Batch', 'Medicine', 'Supplier', 'Received', 'Available', 'Expiry', 'Position'],
-    rows: batches.map(batch => [<b>{batch.batch}</b>, batch.medicine, batch.supplier, batch.received, <b>{batch.available}</b>, formatDate(batch.expiry), <BatchState expiry={batch.expiry} />]),
-  },
-  Suppliers: {
-    label: 'Supply directory', description: 'Approved suppliers and their current relationship with the branch.', action: 'Add supplier',
-    headers: ['Supplier', 'Contact', 'Phone', 'Email', 'Batches'],
-    rows: suppliers.map(supplier => [<><b>{supplier.name}</b><small>S{String(supplier.id).padStart(3, '0')}</small></>, supplier.contact, supplier.phone, supplier.email, supplier.batches]),
-  },
-  Purchases: {
-    label: 'Inbound ledger', description: 'Recorded deliveries with supplier, batch and purchase cost.', action: 'New purchase',
-    headers: ['Batch', 'Medicine', 'Supplier', 'Quantity', 'Unit cost', 'Status'],
-    rows: batches.map(batch => [<b>{batch.batch}</b>, batch.medicine, batch.supplier, batch.received, `Rs ${batch.price.toFixed(2)}`, <span className="recorded">Recorded</span>]),
-  },
-  Sales: {
-    label: 'Transaction ledger', description: 'Completed sales and the batches selected by FEFO.', action: 'New sale',
-    headers: ['Sale', 'Medicine', 'Allocated batch', 'Customer', 'Quantity', 'Total', 'Time'],
-    rows: sales.map(sale => [<b>{sale.id}</b>, sale.medicine, <><b>{sale.batch}</b><small>FEFO allocation</small></>, sale.customer, sale.qty, `Rs ${sale.total.toFixed(2)}`, sale.date]),
-  },
-  Expiry: {
-    label: 'Exception register', description: 'Expired stock and batches entering the 30-day action window.',
-    headers: ['Batch', 'Medicine', 'Supplier', 'Expiry', 'Days', 'Units at risk', 'Position'],
-    rows: batches.filter(batch => daysLeft(batch.expiry) <= 30).map(batch => [<b>{batch.batch}</b>, batch.medicine, batch.supplier, formatDate(batch.expiry), daysLeft(batch.expiry), batch.available, <BatchState expiry={batch.expiry} />]),
-  },
-  Reports: {
-    label: 'Saved reports', description: 'Repeatable operational reports for review, audit and submission.',
-    headers: ['Report', 'Purpose', 'Records', 'Generated', ''],
-    rows: [
-      ['Batch stock position', 'Quantity and value for each received batch', batches.length, 'Today, 09:15', <button className="open-row">Open <ArrowRight size={14} /></button>],
-      ['Near-expiry register', 'Batches within the next 30 days', batches.filter(batch => daysLeft(batch.expiry) >= 0 && daysLeft(batch.expiry) <= 30).length, 'Today, 09:15', <button className="open-row">Open <ArrowRight size={14} /></button>],
-      ['Expired stock', 'Unsaleable batches with remaining quantity', batches.filter(batch => daysLeft(batch.expiry) < 0).length, 'Today, 09:15', <button className="open-row">Open <ArrowRight size={14} /></button>],
-      ['Sales by batch', 'Quantity and revenue by FEFO allocation', sales.length, 'Today, 11:24', <button className="open-row">Open <ArrowRight size={14} /></button>],
-      ['Supplier exposure', 'Received stock and expiry risk by source', suppliers.length, 'Yesterday', <button className="open-row">Open <ArrowRight size={14} /></button>],
-    ],
-  },
+type Page = 'Overview' | 'Inventory' | 'Medicines' | 'Suppliers' | 'Purchases' | 'Sales' | 'Expiry' | 'Reports';
+type Row = Record<string, unknown>;
+type Toast = { message: string; kind: 'success' | 'error' } | null;
+type FormMode = 'sale' | 'purchase' | 'medicine' | 'supplier';
+type Dataset = {
+  medicines: Row[]; categories: Row[]; batches: Row[]; suppliers: Row[];
+  purchases: Row[]; sales: Row[]; alerts: Row[]; inventory: Row[];
+  nearExpiry: Row[]; expired: Row[]; lowStock: Row[];
 };
 
-function Listing({ page, openAction, notify }: { page: Exclude<Page, 'Overview'>; openAction: (mode: ActionMode) => void; notify: (message: string) => void }) {
-  const [query, setQuery] = useState('');
-  const [view, setView] = useState('All records');
-  const content = listingContent[page];
-  const rows = content.rows.filter(row => row.map(nodeText).join(' ').toLowerCase().includes(query.toLowerCase()));
+const emptyData: Dataset = {
+  medicines: [], categories: [], batches: [], suppliers: [], purchases: [], sales: [],
+  alerts: [], inventory: [], nearExpiry: [], expired: [], lowStock: []
+};
+const value = (row: Row, key: string) => row[key];
+const stringValue = (row: Row, key: string) => String(value(row, key) ?? '');
+const numberValue = (row: Row, key: string) => Number(value(row, key) ?? 0);
+const formatDate = (date: unknown) => date
+  ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(String(date)))
+  : '—';
+const money = (amount: unknown) => `₹${Number(amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
-  return <>
-    <PageIntro label={content.label} title={page} description={content.description} action={content.action} onAction={content.action ? () => openAction(content.action!) : undefined} />
-    <section className="data-register">
-      <div className="register-tabs">
-        {['All records', 'Needs attention', 'Archived'].map(tab => <button className={view === tab ? 'active' : ''} onClick={() => setView(tab)} key={tab}>{tab}{tab === 'All records' && <span>{content.rows.length}</span>}</button>)}
-      </div>
-      <div className="register-tools">
-        <label><Search size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={`Search ${page.toLowerCase()}`} />{query && <button onClick={() => setQuery('')} aria-label="Clear search"><X size={14} /></button>}</label>
-        <button><Filter size={15} /> Filter <ChevronDown size={13} /></button>
-        <button onClick={() => notify(`${page} export prepared`)}><Download size={15} /> Export</button>
-      </div>
-      <div className="table-scroll register-table">
-        <table><thead><tr>{content.headers.map(header => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table>
-      </div>
-      <div className="register-foot"><span>{rows.length} of {content.rows.length} records</span><span>Branch: MG Road / Updated just now</span></div>
-    </section>
-  </>;
+const navigation: { page: Page; icon: typeof Pill }[] = [
+  { page: 'Overview', icon: LayoutDashboard }, { page: 'Inventory', icon: Boxes },
+  { page: 'Medicines', icon: Pill }, { page: 'Suppliers', icon: Truck },
+  { page: 'Purchases', icon: PackagePlus }, { page: 'Sales', icon: ShoppingBag },
+  { page: 'Expiry', icon: Clock3 }, { page: 'Reports', icon: FileBarChart }
+];
+
+function StockState({ expiry, quantity }: { expiry: unknown; quantity?: unknown }) {
+  const days = daysLeft(String(expiry));
+  const empty = Number(quantity ?? 1) === 0;
+  const label = empty ? 'Depleted' : days < 0 ? 'Expired' : days <= 30 ? `${days}d left` : 'Healthy';
+  const state = empty ? 'neutral' : days < 0 ? 'danger' : days <= 30 ? 'warning' : 'success';
+  return <span className={`status-pill ${state}`}><i />{label}</span>;
 }
 
-const actionFields: Record<ActionMode, { label: string; type?: string; options?: string[] }[]> = {
-  'Receive stock': [
-    { label: 'Medicine', options: medicines.map(medicine => medicine.name) }, { label: 'Batch number' }, { label: 'Supplier', options: suppliers.map(supplier => supplier.name) }, { label: 'Expiry date', type: 'date' }, { label: 'Quantity', type: 'number' },
-  ],
-  'New purchase': [
-    { label: 'Supplier', options: suppliers.map(supplier => supplier.name) }, { label: 'Invoice number' }, { label: 'Medicine', options: medicines.map(medicine => medicine.name) }, { label: 'Quantity', type: 'number' }, { label: 'Unit cost', type: 'number' },
-  ],
-  'New sale': [
-    { label: 'Medicine', options: medicines.map(medicine => medicine.name) }, { label: 'Customer' }, { label: 'Quantity', type: 'number' },
-  ],
-  'Add medicine': [
-    { label: 'Medicine name' }, { label: 'Category' }, { label: 'Manufacturer' }, { label: 'Pack format' },
-  ],
-  'Add supplier': [
-    { label: 'Supplier name' }, { label: 'Contact person' }, { label: 'Phone', type: 'tel' }, { label: 'Email', type: 'email' },
-  ],
-};
-
-function ActionDialog({ mode, onClose, onComplete }: { mode: ActionMode; onClose: () => void; onComplete: (message: string) => void }) {
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    onComplete(`${mode} recorded successfully`);
-  }
-  return <div className="dialog-backdrop" role="presentation" onMouseDown={event => event.currentTarget === event.target && onClose()}>
-    <form className="action-dialog" onSubmit={submit}>
-      <div className="dialog-head"><div><span>MG Road Pharmacy</span><h2>{mode}</h2></div><button type="button" onClick={onClose} aria-label="Close"><X size={18} /></button></div>
-      {mode === 'New sale' && <div className="fefo-note"><ShieldCheck size={17} /><div><b>FEFO allocation is active</b><small>The earliest eligible batch will be selected automatically.</small></div></div>}
-      <div className="form-grid">{actionFields[mode].map(field => <label key={field.label}><span>{field.label}</span>{field.options ? <select required>{field.options.map(option => <option key={option}>{option}</option>)}</select> : <input required type={field.type || 'text'} placeholder={field.type === 'number' ? '0' : ''} />}</label>)}</div>
-      <div className="dialog-actions"><button type="button" onClick={onClose}>Cancel</button><button type="submit">Confirm {mode.toLowerCase()}</button></div>
-    </form>
+function Modal({ title, eyebrow, children, onClose }: { title: string; eyebrow: string; children: ReactNode; onClose: () => void }) {
+  return <div className="dialog-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+    <div className="action-dialog" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="dialog-head"><div><span>{eyebrow}</span><h2>{title}</h2></div>
+        <button className="icon-button" type="button" onClick={onClose} aria-label="Close"><X size={19} /></button>
+      </div>{children}
+    </div>
   </div>;
 }
 
 export default function App() {
   const [page, setPage] = useState<Page>('Overview');
-  const [navOpen, setNavOpen] = useState(false);
-  const [action, setAction] = useState<ActionMode | null>(null);
-  const [toast, setToast] = useState('');
-  const exceptionCount = useMemo(() => batches.filter(batch => daysLeft(batch.expiry) <= 30).length, []);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [form, setForm] = useState<FormMode | ''>('');
+  const [editRow, setEditRow] = useState<Row | null>(null);
+  const [search, setSearch] = useState('');
+  const [toast, setToast] = useState<Toast>(null);
+  const [data, setData] = useState<Dataset>(emptyData);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  function navigate(next: Page) { setPage(next); setNavOpen(false); }
-  function notify(message: string) {
-    setAction(null); setToast(message);
-    window.setTimeout(() => setToast(''), 2800);
+  const notify = (message: string, kind: 'success' | 'error' = 'success') => {
+    setToast({ message, kind });
+    window.setTimeout(() => setToast(null), 3200);
+  };
+  async function load() {
+    try {
+      setLoading(true); setError('');
+      const [medicines, categories, batches, suppliers, purchases, sales, alerts, inventory, nearExpiry, expired, lowStock] = await Promise.all([
+        api<Row[]>('/medicines'), api<Row[]>('/categories'), api<Row[]>('/batches'), api<Row[]>('/suppliers'),
+        api<Row[]>('/purchases'), api<Row[]>('/sales'), api<Row[]>('/alerts'), api<Row[]>('/reports/inventory'),
+        api<Row[]>('/reports/near-expiry'), api<Row[]>('/reports/expired'), api<Row[]>('/reports/low-stock')
+      ]);
+      setData({ medicines, categories, batches, suppliers, purchases, sales, alerts, inventory, nearExpiry, expired, lowStock });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to connect');
+    } finally { setLoading(false); }
+  }
+  useEffect(() => { void load(); }, []);
+
+  const totalUnits = useMemo(() => data.batches.reduce((sum, batch) => sum + numberValue(batch, 'QUANTITY_AVAILABLE'), 0), [data.batches]);
+  const retailValue = useMemo(() => data.batches.reduce((sum, batch) => sum + numberValue(batch, 'QUANTITY_AVAILABLE') * numberValue(batch, 'SELLING_PRICE'), 0), [data.batches]);
+  const activeAlerts = data.alerts.filter(alert => stringValue(alert, 'STATUS') === 'ACTIVE');
+  const urgentCount = data.nearExpiry.length + data.expired.length;
+
+  const changePage = (next: Page) => { setPage(next); setSearch(''); setMenuOpen(false); };
+  async function refreshAlerts() {
+    try { await api('/alerts/generate', { method: 'POST' }); await load(); notify('Expiry alerts refreshed'); }
+    catch (caught) { notify(caught instanceof Error ? caught.message : 'Unable to refresh alerts', 'error'); }
+  }
+  async function resolveAlert(id: unknown) {
+    try { await api(`/alerts/${Number(id)}/resolve`, { method: 'PATCH' }); await load(); notify('Alert resolved'); }
+    catch (caught) { notify(caught instanceof Error ? caught.message : 'Unable to resolve alert', 'error'); }
   }
 
-  return <div className="site-shell">
-    <header className="masthead">
-      <div className="masthead-main">
-        <button className="nav-toggle" onClick={() => setNavOpen(!navOpen)} aria-label="Toggle navigation"><Menu size={20} /></button>
-        <button className="wordmark" onClick={() => navigate('Overview')}><span>PB</span><div><strong>PharmaBatch</strong><small>Stock control</small></div></button>
-        <span className="header-rule" />
-        <button className="branch-button"><span>MG Road Pharmacy</span><small>Branch 01</small><ChevronDown size={14} /></button>
-        <label className="header-search"><Search size={16} /><input placeholder="Search medicine or batch" /><kbd>/</kbd></label>
-        <div className="sync-status"><i /><span><b>Live</b><small>Synced 2m ago</small></span></div>
-        <button className="new-sale" onClick={() => setAction('New sale')}><Plus size={16} /> New sale</button>
-        <button className="account-button"><span>GC</span><div><b>George</b><small>Admin</small></div><ChevronDown size={14} /></button>
-      </div>
-      <nav className={`primary-nav ${navOpen ? 'open' : ''}`}>{navigation.map(item => <button className={page === item ? 'active' : ''} onClick={() => navigate(item)} key={item}>{item}{item === 'Expiry' && <em>{exceptionCount}</em>}</button>)}</nav>
-    </header>
+  async function deleteMaster(kind: 'medicine' | 'supplier', row: Row) {
+    const idKey = kind === 'medicine' ? 'MEDICINE_ID' : 'SUPPLIER_ID';
+    const labelKey = kind === 'medicine' ? 'MEDICINE_NAME' : 'SUPPLIER_NAME';
+    const id = Number(value(row, idKey));
+    const label = stringValue(row, labelKey);
+    if (!window.confirm(`Delete ${label}? Records already used by transaction history are protected.`)) return;
+    try {
+      const result = await api<{ message: string }>(`/${kind}s/${id}`, { method: 'DELETE' });
+      await load(); notify(result.message);
+    } catch (caught) { notify(caught instanceof Error ? caught.message : 'Unable to delete record', 'error'); }
+  }
+  function editMaster(kind: 'medicine' | 'supplier', row: Row) {
+    setEditRow(row); setForm(kind);
+  }
 
-    <main className="workspace">
-      {page === 'Overview' ? <Dashboard go={navigate} openAction={setAction} /> : <Listing page={page} openAction={setAction} notify={notify} />}
-    </main>
+  return <div className="app-shell">
+    <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
+      <div className="brand"><span className="brand-mark"><Pill size={22} /></span><div><strong>MedLedger</strong><small>Pharmacy operations</small></div></div>
+      <nav aria-label="Main navigation">
+        <span className="nav-label">Workspace</span>
+        {navigation.map(({ page: item, icon: Icon }) => <button key={item} className={page === item ? 'active' : ''} onClick={() => changePage(item)}>
+          <Icon size={18} /><span>{item}</span>{item === 'Expiry' && urgentCount > 0 && <em>{urgentCount}</em>}
+        </button>)}
+      </nav>
+      <div className="sidebar-foot"><span className={error ? 'connection-dot offline' : 'connection-dot'} /><div><strong>{error ? 'Connection unavailable' : 'Systems online'}</strong><small>{error ? 'Check API and Oracle' : 'Inventory is live'}</small></div></div>
+    </aside>
+    {menuOpen && <button className="menu-shade" aria-label="Close menu" onClick={() => setMenuOpen(false)} />}
 
-    {action && <ActionDialog mode={action} onClose={() => setAction(null)} onComplete={notify} />}
-    {toast && <div className="toast"><Check size={16} />{toast}</div>}
+    <div className="main-shell">
+      <header className="topbar">
+        <button className="mobile-menu icon-button" onClick={() => setMenuOpen(true)} aria-label="Open menu"><Menu size={21} /></button>
+        <div className="search-box"><Search size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${page.toLowerCase()}`} aria-label={`Search ${page}`} /></div>
+        <button className="icon-button refresh" onClick={() => void load()} aria-label="Refresh data"><RefreshCw size={18} /></button>
+        <button className="primary-button" onClick={() => setForm('sale')}><Plus size={17} />New sale</button>
+      </header>
+
+      <main>
+        {loading ? <LoadingState /> : error ? <ConnectionState message={error} retry={() => void load()} /> : page === 'Overview' ?
+          <Overview data={data} totalUnits={totalUnits} retailValue={retailValue} activeAlerts={activeAlerts.length} openForm={setForm} go={changePage} /> :
+          <DataPage page={page} data={data} search={search} openForm={mode => { setEditRow(null); setForm(mode); }} refreshAlerts={() => void refreshAlerts()} resolveAlert={resolveAlert} editMaster={editMaster} deleteMaster={deleteMaster} />}
+      </main>
+    </div>
+
+    {form && <ActionForm mode={form} data={data} editRow={editRow} onClose={() => { setForm(''); setEditRow(null); }} onSuccess={async message => {
+      setForm(''); setEditRow(null); await load(); notify(message);
+    }} />}
+    {toast && <div className={`toast ${toast.kind}`} role="status">{toast.kind === 'success' ? <Check size={17} /> : <AlertTriangle size={17} />}{toast.message}</div>}
   </div>;
+}
+
+function LoadingState() {
+  return <div className="state-card"><span className="loader" /><h2>Loading inventory</h2><p>Retrieving the latest pharmacy records.</p></div>;
+}
+
+function ConnectionState({ message, retry }: { message: string; retry: () => void }) {
+  return <div className="state-card error-state"><AlertTriangle size={28} /><h2>Unable to load the workspace</h2><p>{message}</p><button className="primary-button" onClick={retry}><RefreshCw size={16} />Try again</button></div>;
+}
+
+function Overview({ data, totalUnits, retailValue, activeAlerts, openForm, go }: {
+  data: Dataset; totalUnits: number; retailValue: number; activeAlerts: number;
+  openForm: (mode: FormMode) => void; go: (page: Page) => void;
+}) {
+  const recentSales = data.sales.slice(0, 5);
+  const expiryWatch = [...data.expired, ...data.nearExpiry].slice(0, 5);
+  return <>
+    <section className="page-heading overview-heading"><div><span className="eyebrow">Inventory overview</span><h1>Good stock starts with clear visibility.</h1><p>Monitor quantities, expiry exposure and the movement of every batch from one workspace.</p></div>
+      <button className="secondary-button" onClick={() => openForm('purchase')}><PackagePlus size={17} />Receive stock</button>
+    </section>
+
+    <section className="metrics-grid">
+      <Metric label="Units on hand" value={totalUnits.toLocaleString('en-IN')} detail={`${data.batches.length} tracked batches`} icon={<Boxes size={20} />} />
+      <Metric label="Inventory value" value={money(retailValue)} detail="At current selling price" icon={<Store size={20} />} />
+      <Metric label="Expiry attention" value={String(data.nearExpiry.length + data.expired.length)} detail={`${data.expired.length} already expired`} icon={<Clock3 size={20} />} tone="amber" />
+      <Metric label="Low-stock items" value={String(data.lowStock.length)} detail="Below reorder level" icon={<AlertTriangle size={20} />} tone={data.lowStock.length ? 'red' : 'green'} />
+    </section>
+
+    <section className="overview-grid">
+      <div className="panel"><PanelHead title="Expiry watchlist" detail={`${activeAlerts} active alert${activeAlerts === 1 ? '' : 's'}`} action="View all" onClick={() => go('Expiry')} />
+        <div className="compact-list">{expiryWatch.length ? expiryWatch.map((batch, index) => <button key={`${stringValue(batch, 'BATCH_ID')}-${index}`} onClick={() => go('Expiry')}>
+          <span className="list-icon"><Pill size={18} /></span><span><strong>{stringValue(batch, 'MEDICINE_NAME')}</strong><small>{stringValue(batch, 'BATCH_NUMBER')} · {numberValue(batch, 'QUANTITY_AVAILABLE')} units</small></span>
+          <StockState expiry={value(batch, 'EXPIRY_DATE')} quantity={value(batch, 'QUANTITY_AVAILABLE')} /><ChevronRight size={17} />
+        </button>) : <EmptyInline label="No batches need expiry attention." />}</div>
+      </div>
+      <div className="panel"><PanelHead title="Recent sales" detail="Latest fulfilled items" action="View ledger" onClick={() => go('Sales')} />
+        <div className="compact-list">{recentSales.length ? recentSales.map((sale, index) => <button key={`${stringValue(sale, 'SALE_ID')}-${index}`} onClick={() => go('Sales')}>
+          <span className="list-icon green"><ShoppingBag size={18} /></span><span><strong>{stringValue(sale, 'MEDICINE_NAME')}</strong><small>{stringValue(sale, 'CUSTOMER_NAME')} · {numberValue(sale, 'QUANTITY')} units</small></span>
+          <b className="list-amount">{money(value(sale, 'SUBTOTAL'))}</b><ChevronRight size={17} />
+        </button>) : <EmptyInline label="No sales have been recorded." />}</div>
+      </div>
+    </section>
+  </>;
+}
+
+function Metric({ label, value: displayValue, detail, icon, tone = '' }: { label: string; value: string; detail: string; icon: ReactNode; tone?: string }) {
+  return <article className={`metric-card ${tone}`}><div className="metric-top"><span>{label}</span><i>{icon}</i></div><strong>{displayValue}</strong><small>{detail}</small></article>;
+}
+function PanelHead({ title, detail, action, onClick }: { title: string; detail: string; action: string; onClick: () => void }) {
+  return <div className="panel-head"><div><h2>{title}</h2><p>{detail}</p></div><button onClick={onClick}>{action}<ArrowRight size={15} /></button></div>;
+}
+function EmptyInline({ label }: { label: string }) { return <div className="empty-inline"><ClipboardList size={22} /><span>{label}</span></div>; }
+
+type TableSpec = { title: string; description: string; columns: string[]; rows: ReactNode[][]; action?: { label: string; mode?: FormMode; run?: () => void } };
+function DataPage({ page, data, search, openForm, refreshAlerts, resolveAlert, editMaster, deleteMaster }: {
+  page: Exclude<Page, 'Overview'>; data: Dataset; search: string; openForm: (mode: FormMode) => void;
+  refreshAlerts: () => void; resolveAlert: (id: unknown) => Promise<void>;
+  editMaster: (kind: 'medicine' | 'supplier', row: Row) => void;
+  deleteMaster: (kind: 'medicine' | 'supplier', row: Row) => Promise<void>;
+}) {
+  let spec: TableSpec;
+  if (page === 'Inventory') spec = { title: 'Batch inventory', description: 'Live quantities, prices and expiry positions across every stocked batch.', columns: ['Batch', 'Medicine', 'Supplier', 'Available', 'Price', 'Expiry', 'Status'], rows: data.batches.map(batch => [stringValue(batch, 'BATCH_NUMBER'), stringValue(batch, 'MEDICINE_NAME'), stringValue(batch, 'SUPPLIER_NAME') || '—', numberValue(batch, 'QUANTITY_AVAILABLE'), money(value(batch, 'SELLING_PRICE')), formatDate(value(batch, 'EXPIRY_DATE')), <StockState expiry={value(batch, 'EXPIRY_DATE')} quantity={value(batch, 'QUANTITY_AVAILABLE')} />]), action: { label: 'Receive stock', mode: 'purchase' } };
+  else if (page === 'Medicines') spec = { title: 'Medicine catalogue', description: 'Products, categories and reorder thresholds in the active catalogue.', columns: ['Medicine', 'Generic name', 'Category', 'Form', 'Strength', 'Manufacturer', 'Stock', 'Reorder', 'Actions'], rows: data.medicines.map(item => [stringValue(item, 'MEDICINE_NAME'), stringValue(item, 'GENERIC_NAME') || '—', stringValue(item, 'CATEGORY_NAME'), stringValue(item, 'DOSAGE_FORM') || '—', stringValue(item, 'STRENGTH') || '—', stringValue(item, 'MANUFACTURER') || '—', numberValue(item, 'TOTAL_STOCK'), numberValue(item, 'REORDER_LEVEL'), <span className="row-actions"><button title="Edit medicine" aria-label="Edit medicine" onClick={() => editMaster('medicine', item)}><Pencil size={14} /></button><button className="danger-action" title="Delete medicine" aria-label="Delete medicine" onClick={() => void deleteMaster('medicine', item)}><Trash2 size={14} /></button></span>]), action: { label: 'Add medicine', mode: 'medicine' } };
+  else if (page === 'Suppliers') spec = { title: 'Suppliers', description: 'Approved vendors and their primary contact information.', columns: ['Supplier', 'Contact person', 'Phone', 'Email', 'Actions'], rows: data.suppliers.map(item => [stringValue(item, 'SUPPLIER_NAME'), stringValue(item, 'CONTACT_PERSON') || '—', stringValue(item, 'PHONE') || '—', stringValue(item, 'EMAIL') || '—', <span className="row-actions"><button title="Edit supplier" aria-label="Edit supplier" onClick={() => editMaster('supplier', item)}><Pencil size={14} /></button><button className="danger-action" title="Delete supplier" aria-label="Delete supplier" onClick={() => void deleteMaster('supplier', item)}><Trash2 size={14} /></button></span>]), action: { label: 'Add supplier', mode: 'supplier' } };
+  else if (page === 'Purchases') spec = { title: 'Stock receipts', description: 'Purchase invoices and received quantities from pharmacy suppliers.', columns: ['Receipt', 'Invoice', 'Supplier', 'Date', 'Quantity', 'Total'], rows: data.purchases.map(item => [`#${stringValue(item, 'PURCHASE_ID')}`, stringValue(item, 'INVOICE_NUMBER'), stringValue(item, 'SUPPLIER_NAME'), formatDate(value(item, 'PURCHASE_DATE')), numberValue(item, 'QUANTITY'), money(value(item, 'TOTAL_AMOUNT'))]), action: { label: 'New receipt', mode: 'purchase' } };
+  else if (page === 'Sales') spec = { title: 'Sales ledger', description: 'Completed sales with the exact batches used for fulfilment.', columns: ['Sale', 'Medicine', 'Batch', 'Customer', 'Payment', 'Quantity', 'Line total', 'Date'], rows: data.sales.map(item => [`#${stringValue(item, 'SALE_ID')}`, stringValue(item, 'MEDICINE_NAME'), stringValue(item, 'BATCH_NUMBER'), stringValue(item, 'CUSTOMER_NAME'), stringValue(item, 'PAYMENT_METHOD'), numberValue(item, 'QUANTITY'), money(value(item, 'SUBTOTAL')), formatDate(value(item, 'SALE_DATE'))]), action: { label: 'New sale', mode: 'sale' } };
+  else if (page === 'Expiry') {
+    const expiryRows = data.alerts.map(item => [stringValue(item, 'MEDICINE_NAME'), stringValue(item, 'BATCH_NUMBER'), formatDate(value(item, 'EXPIRY_DATE')), numberValue(item, 'QUANTITY_AVAILABLE'), <StockState expiry={value(item, 'EXPIRY_DATE')} quantity={value(item, 'QUANTITY_AVAILABLE')} />, stringValue(item, 'STATUS') === 'ACTIVE' ? <button className="table-action" onClick={() => void resolveAlert(value(item, 'ALERT_ID'))}>Resolve</button> : <span className="resolved-label">Resolved</span>]);
+    spec = { title: 'Expiry centre', description: 'Review active expiry warnings and close alerts after stock is handled.', columns: ['Medicine', 'Batch', 'Expiry', 'Units', 'Position', 'Action'], rows: expiryRows, action: { label: 'Refresh alerts', run: refreshAlerts } };
+  } else {
+    const reportRows = [
+      ...data.lowStock.map(item => ['Low stock', stringValue(item, 'MEDICINE_NAME'), `${numberValue(item, 'TOTAL_STOCK')} units`, `Reorder at ${numberValue(item, 'REORDER_LEVEL')}`, <span className="status-pill danger"><i />Action needed</span>]),
+      ...data.expired.map(item => ['Expired stock', stringValue(item, 'MEDICINE_NAME'), stringValue(item, 'BATCH_NUMBER'), formatDate(value(item, 'EXPIRY_DATE')), <span className="status-pill danger"><i />Blocked</span>]),
+      ...data.nearExpiry.map(item => ['Near expiry', stringValue(item, 'MEDICINE_NAME'), stringValue(item, 'BATCH_NUMBER'), formatDate(value(item, 'EXPIRY_DATE')), <span className="status-pill warning"><i />Monitor</span>])
+    ];
+    spec = { title: 'Operational reports', description: 'Exception-based reporting for purchasing and stock-control decisions.', columns: ['Report', 'Medicine', 'Reference', 'Detail', 'Status'], rows: reportRows };
+  }
+
+  const query = search.trim().toLowerCase();
+  const filtered = query ? spec.rows.filter(row => row.some(cell => typeof cell !== 'object' && String(cell).toLowerCase().includes(query))) : spec.rows;
+  return <>
+    <section className="page-heading"><div><span className="eyebrow">Pharmacy workspace</span><h1>{spec.title}</h1><p>{spec.description}</p></div>
+      {spec.action && <button className="primary-button" onClick={() => spec.action?.run ? spec.action.run() : spec.action?.mode && openForm(spec.action.mode)}><Plus size={17} />{spec.action.label}</button>}
+    </section>
+    <section className="table-panel"><div className="table-scroll"><table><thead><tr>{spec.columns.map(column => <th key={column}>{column}</th>)}</tr></thead>
+      <tbody>{filtered.length ? filtered.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>) : <tr><td className="empty-cell" colSpan={spec.columns.length}>{query ? 'No records match your search.' : 'No records to display.'}</td></tr>}</tbody>
+    </table></div><div className="table-foot"><span>{filtered.length} record{filtered.length === 1 ? '' : 's'}</span><span>{query ? `Filtered by “${search}”` : 'Live inventory data'}</span></div></section>
+  </>;
+}
+
+function ActionForm({ mode, data, editRow, onClose, onSuccess }: { mode: FormMode; data: Dataset; editRow: Row | null; onClose: () => void; onSuccess: (message: string) => Promise<void> }) {
+  const initialFields: Record<string, string> = editRow ? Object.fromEntries(Object.entries(editRow).map(([key, val]) => [key.toLowerCase(), String(val ?? '')])) : { payment_method: 'CASH' };
+  const [fields, setFields] = useState<Record<string, string>>(initialFields);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const set = (name: string, next: string) => setFields(current => ({ ...current, [name]: next }));
+  const titles: Record<FormMode, [string, string]> = { sale: ['Record a new sale', 'Stock out'], purchase: ['Receive supplier stock', 'Stock in'], medicine: [editRow ? 'Edit medicine' : 'Add a medicine', 'Catalogue'], supplier: [editRow ? 'Edit supplier' : 'Add a supplier', 'Vendor directory'] };
+
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setSaving(true); setFormError('');
+    try {
+      let endpoint = `/${mode}s`;
+      let payload: Record<string, string | number> = { ...fields };
+      if (mode === 'sale') payload = { ...fields, medicine_id: Number(fields.medicine_id), quantity: Number(fields.quantity) };
+      if (mode === 'medicine') payload = { ...fields, category_id: Number(fields.category_id), reorder_level: Number(fields.reorder_level || 10) };
+      if (mode === 'purchase') payload = { ...fields, supplier_id: Number(fields.supplier_id), medicine_id: Number(fields.medicine_id), quantity: Number(fields.quantity), unit_price: Number(fields.unit_price), selling_price: Number(fields.selling_price) };
+      const id = editRow ? Number(value(editRow, mode === 'medicine' ? 'MEDICINE_ID' : 'SUPPLIER_ID')) : null;
+      if (editRow && (mode === 'medicine' || mode === 'supplier')) endpoint += `/${id}`;
+      const result = await api<{ message: string }>(endpoint, { method: editRow ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+      await onSuccess(result.message);
+    } catch (caught) { setFormError(caught instanceof Error ? caught.message : 'Unable to save the record'); }
+    finally { setSaving(false); }
+  }
+
+  return <Modal title={titles[mode][0]} eyebrow={titles[mode][1]} onClose={onClose}><form onSubmit={submit}>
+    <div className="form-grid">
+      {mode === 'supplier' && <><Field initial={fields.supplier_name} name="supplier_name" label="Supplier name" set={set} /><Field initial={fields.contact_person} name="contact_person" label="Contact person" set={set} required={false} /><Field initial={fields.phone} name="phone" label="Phone" type="tel" set={set} required={false} /><Field initial={fields.email} name="email" label="Email" type="email" set={set} required={false} /></>}
+      {mode === 'medicine' && <><Field initial={fields.medicine_name} name="medicine_name" label="Medicine name" set={set} /><Field initial={fields.generic_name} name="generic_name" label="Generic name" set={set} required={false} /><SelectField initial={fields.category_id} name="category_id" label="Category" rows={data.categories} idKey="CATEGORY_ID" labelKey="CATEGORY_NAME" set={set} /><Field initial={fields.manufacturer} name="manufacturer" label="Manufacturer" set={set} required={false} /><Field initial={fields.dosage_form} name="dosage_form" label="Dosage form" set={set} required={false} /><Field initial={fields.strength} name="strength" label="Strength" set={set} required={false} /><Field initial={fields.reorder_level} name="reorder_level" label="Reorder level" type="number" min="0" set={set} /></>}
+      {mode === 'sale' && <><SelectField name="medicine_id" label="Medicine" rows={data.medicines} idKey="MEDICINE_ID" labelKey="MEDICINE_NAME" set={set} /><Field name="customer_name" label="Customer" placeholder="Walk-in Customer" set={set} required={false} /><Field name="customer_phone" label="Customer phone" type="tel" set={set} required={false} /><Field name="customer_email" label="Customer email" type="email" set={set} required={false} /><Field name="quantity" label="Quantity" type="number" min="1" set={set} /><label><span>Payment method</span><select value={fields.payment_method} onChange={event => set('payment_method', event.target.value)}><option>CASH</option><option>UPI</option><option>CARD</option><option>OTHER</option></select></label></>}
+      {mode === 'purchase' && <><SelectField name="supplier_id" label="Supplier" rows={data.suppliers} idKey="SUPPLIER_ID" labelKey="SUPPLIER_NAME" set={set} /><SelectField name="medicine_id" label="Medicine" rows={data.medicines} idKey="MEDICINE_ID" labelKey="MEDICINE_NAME" set={set} /><Field name="invoice_number" label="Invoice number" set={set} /><Field name="batch_number" label="Batch number" set={set} /><Field name="manufacture_date" label="Manufacture date" type="date" set={set} /><Field name="expiry_date" label="Expiry date" type="date" set={set} /><Field name="quantity" label="Quantity" type="number" min="1" set={set} /><Field name="unit_price" label="Purchase price" type="number" min="0" step="0.01" set={set} /><Field name="selling_price" label="Selling price" type="number" min="0" step="0.01" set={set} /></>}
+    </div>
+    {formError && <div className="form-error"><AlertTriangle size={16} />{formError}</div>}
+    <div className="dialog-actions"><button type="button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={saving} type="submit">{saving ? 'Saving…' : 'Save record'}</button></div>
+  </form></Modal>;
+}
+
+function Field({ name, label, type = 'text', required = true, min, step, placeholder, initial = '', set }: { name: string; label: string; type?: string; required?: boolean; min?: string; step?: string; placeholder?: string; initial?: string; set: (name: string, value: string) => void }) {
+  return <label><span>{label}</span><input required={required} type={type} min={min} step={step} placeholder={placeholder} defaultValue={initial} onChange={event => set(name, event.target.value)} /></label>;
+}
+function SelectField({ name, label, rows, idKey, labelKey, initial = '', set }: { name: string; label: string; rows: Row[]; idKey: string; labelKey: string; initial?: string; set: (name: string, value: string) => void }) {
+  return <label><span>{label}</span><select required defaultValue={initial} onChange={event => set(name, event.target.value)}><option value="" disabled>Select {label.toLowerCase()}</option>{rows.map(row => <option key={stringValue(row, idKey)} value={stringValue(row, idKey)}>{stringValue(row, labelKey)}</option>)}</select></label>;
 }

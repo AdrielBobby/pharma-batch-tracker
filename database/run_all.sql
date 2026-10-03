@@ -1,0 +1,23 @@
+-- One-command clean installation for SQL*Plus / SQLcl.
+-- Run while connected as the PHARMA user from this directory:
+--   @run_all.sql
+WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
+SET DEFINE OFF
+PROMPT [1/7] Resetting schema...
+@@00_reset.sql
+PROMPT [2/7] Creating tables and constraints...
+@@01_schema.sql
+PROMPT [3/7] Creating stock and total-maintenance triggers...
+@@03_triggers.sql
+PROMPT [4/7] Creating procedures and functions...
+@@04_procedures_functions.sql
+PROMPT [5/7] Creating reporting views...
+@@05_views.sql
+PROMPT [6/7] Loading deterministic sample data...
+@@02_sample_data.sql
+PROMPT [7/7] Generating initial expiry alerts...
+BEGIN generate_expiry_alerts; END;
+/
+COMMIT;
+PROMPT Database installation completed successfully.
+EXIT SUCCESS
